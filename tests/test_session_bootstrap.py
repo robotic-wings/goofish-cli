@@ -10,6 +10,7 @@ import json
 import pytest
 
 from goofish_cli.core import session as session_mod
+from goofish_cli.core.crypto import decrypt_cookies
 from goofish_cli.core.errors import AuthRequiredError
 
 
@@ -58,10 +59,10 @@ def test_load_bootstraps_when_missing(fake_cookies_path, monkeypatch):
     s = session_mod.Session.load()
     assert s.unb == "U2"
     assert called["n"] == 1
-    # 写盘了
+    # 写盘了（加密格式）
     assert fake_cookies_path.exists()
-    data = json.loads(fake_cookies_path.read_text())
-    assert {"name": "unb", "value": "U2"} in data
+    data = decrypt_cookies(fake_cookies_path.read_bytes())
+    assert data["unb"] == "U2"
     # 文件权限 0o600
     assert (fake_cookies_path.stat().st_mode & 0o777) == 0o600
 
@@ -129,9 +130,37 @@ def test_load_raises_when_bootstrap_fail_does_not_write(fake_cookies_path, monke
 
 
 def test_write_cookies_json_format(tmp_path):
-    """write_cookies_json 应写 Chrome 扩展风格的 list。auth login 和 Session 都用同一个。"""
+    """write_cookies_json 应写加密格式，解密后内容正确。"""
     target = tmp_path / "out.json"
     session_mod.write_cookies_json(target, {"a": "1", "b": "2"})
-    data = json.loads(target.read_text())
-    assert data == [{"name": "a", "value": "1"}, {"name": "b", "value": "2"}]
+    raw = target.read_bytes()
+    # 加密文件不应是明文 JSON
+    with pytest.raises((json.JSONDecodeError, UnicodeDecodeError)):
+        json.loads(raw)
+    # 解密后内容正确
+    data = decrypt_cookies(raw)
+    assert data == {"a": "1", "b": "2"}
     assert (target.stat().st_mode & 0o777) == 0o600
+
+
+def test_plaintext_migration_to_encrypted(fake_cookies_path, monkeypatch):
+    """旧版明文 JSON 文件应被自动加密覆盖（向后兼容迁移）。"""
+    # 写入旧版明文格式
+    fake_cookies_path.write_text(json.dumps([
+        {"name": "unb", "value": "U1"},
+        {"name": "_m_h5_tk", "value": "T_xxx_1"},
+    ]))
+    # 确认当前是明文
+    assert fake_cookies_path.read_text().startswith("[")
+
+    monkeypatch.setattr(session_mod, "_bootstrap_from_browser", lambda: (_ for _ in ()).throw(AssertionError("不该触发")))
+
+    s = session_mod.Session.load()
+    assert s.unb == "U1"
+
+    # 文件已被加密
+    raw = fake_cookies_path.read_bytes()
+    with pytest.raises((json.JSONDecodeError, UnicodeDecodeError)):
+        json.loads(raw)
+    data = decrypt_cookies(raw)
+    assert data["unb"] == "U1"

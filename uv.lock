@@ -311,6 +311,7 @@ version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "browser-cookie3" },
+    { name = "cryptography" },
     { name = "loguru" },
     { name = "mcp" },
     { name = "playwright" },
@@ -335,6 +336,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "browser-cookie3", specifier = ">=0.20" },
+    { name = "cryptography", specifier = ">=41.0" },
     { name = "loguru", specifier = ">=0.7" },
     { name = "mcp", specifier = ">=1.2" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },

@@ -18,6 +18,7 @@ from pathlib import Path
 import requests
 from loguru import logger
 
+from goofish_cli.core.crypto import decrypt_cookies, encrypt_cookies
 from goofish_cli.core.errors import AuthRequiredError
 from goofish_cli.core.sign import generate_device_id
 
@@ -76,7 +77,10 @@ class Session:
 def _load_or_bootstrap_cookies(path: Path) -> dict[str, str]:
     """先查本地 cookies.json；没有就从本机浏览器自动导入一次写盘。"""
     if path.exists():
-        return _load_cookies(path)
+        cookies = _load_cookies(path)
+        # 明文旧文件 → 自动加密覆盖
+        _maybe_migrate_to_encrypted(path, cookies)
+        return cookies
 
     # 本地不存在，走自动 bootstrap（除非用户显式关闭）
     if os.environ.get("GOOFISH_NO_CHROME_BOOTSTRAP") == "1":
@@ -117,13 +121,9 @@ def _bootstrap_from_browser() -> tuple[str, dict[str, str]]:
 
 
 def write_cookies_json(path: Path, cookies: dict[str, str]) -> None:
-    """把 cookies dict 以 Chrome 扩展风格 JSON 数组落盘。供 auth login 复用。"""
+    """把 cookies dict 加密落盘。供 auth login / refresh / qr_login 复用。"""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(
-        [{"name": k, "value": v} for k, v in cookies.items()],
-        ensure_ascii=False,
-        indent=2,
-    ))
+    path.write_bytes(encrypt_cookies(cookies))
     path.chmod(0o600)
 
 
@@ -149,11 +149,33 @@ def _load_or_mint_device_id(unb: str) -> str:
 
 
 def _load_cookies(path: Path) -> dict[str, str]:
-    text = path.read_text()
-    raw = json.loads(text)
-    # 兼容两种格式：Chrome 扩展导出的 list[{name,value,...}] / 纯 dict
+    raw_bytes = path.read_bytes()
+    # 优先尝试加密格式解密
+    try:
+        return decrypt_cookies(raw_bytes)
+    except (ValueError, Exception):  # noqa: BLE001
+        pass
+    # fallback: 明文 JSON（兼容旧版本或手动导出的文件）
+    try:
+        raw = json.loads(raw_bytes)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise AuthRequiredError(f"cookie 文件格式不识别（非加密也非 JSON）：{path}") from e
     if isinstance(raw, list):
         return {c["name"]: c["value"] for c in raw if "name" in c and "value" in c}
     if isinstance(raw, dict):
         return {str(k): str(v) for k, v in raw.items()}
     raise AuthRequiredError(f"cookies.json 格式不识别：{path}")
+
+
+def _maybe_migrate_to_encrypted(path: Path, cookies: dict[str, str]) -> None:
+    """如果文件是明文 JSON，自动加密覆盖。"""
+    try:
+        raw = path.read_bytes()
+        json.loads(raw)  # 能 parse 说明是明文
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return  # 已经是加密格式，无需迁移
+    try:
+        write_cookies_json(path, cookies)
+        logger.info(f"已将明文 cookie 自动加密 → {path}")
+    except OSError as e:
+        logger.debug(f"自动加密迁移失败（不影响使用）：{e}")
