@@ -51,8 +51,16 @@ def _wrap(cmd: Command):
             raise typer.Exit(code=1) from e
         render(result, fmt=fmt, columns=cmd.columns or None)
 
-    # 重建签名以让 Typer 正确推导
-    new_params = list(sig.parameters.values()) + [
+    # 重建签名以让 Typer 正确推导：
+    # cmd.arguments 里点名的参数包成 typer.Argument → CLI 暴露为位置参数；
+    # 其余带默认值的参数仍是 --option。只动 CLI 包装层签名，原函数默认值不变
+    # （MCP / Skill / 测试直接调用 cmd.func 时拿到的还是原始默认值，如 None）。
+    rebuilt = []
+    for p in sig.parameters.values():
+        if p.name in cmd.arguments:
+            p = p.replace(default=typer.Argument(p.default))
+        rebuilt.append(p)
+    new_params = rebuilt + [
         inspect.Parameter(
             "format",
             kind=inspect.Parameter.KEYWORD_ONLY,

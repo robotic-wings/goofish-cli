@@ -19,6 +19,9 @@ class Command:
     strategy: Strategy = Strategy.COOKIE
     columns: list[str] = field(default_factory=list)
     write: bool = False
+    # 这些参数在 CLI 里暴露为位置参数（typer.Argument）而非 --option。
+    # 仅影响 CLI 包装层；registry.func 的签名/默认值保持原样，MCP / Skill / 直接调用不受影响。
+    arguments: list[str] = field(default_factory=list)
 
     @property
     def full_name(self) -> str:
@@ -36,6 +39,7 @@ def command(
     strategy: Strategy = Strategy.COOKIE,
     columns: list[str] | None = None,
     write: bool = False,
+    arguments: list[str] | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """装饰器：将函数注册为命令。"""
 
@@ -48,6 +52,7 @@ def command(
             strategy=strategy,
             columns=columns or [],
             write=write,
+            arguments=arguments or [],
         )
         if cmd.full_name in _REGISTRY:
             raise RuntimeError(f"重复注册命令：{cmd.full_name}")

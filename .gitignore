@@ -26,6 +26,7 @@ env/
 cookies.json
 *cookies*.json
 credentials.json
+auth.json
 
 # IDE
 .vscode/

@@ -23,12 +23,15 @@ def get(item_id: str) -> dict[str, Any]:
         spm_cnt="a21ybx.item.0.0",
     )
     data = raw.get("data", {}) or {}
-    track = data.get("trackParams", {}) or {}
+    # mtop.taobao.idle.pc.detail 把字段拆到 itemDO / sellerDO；trackParams 只剩埋点
+    # 用的 id 列表，不含 title/price/nick，所以早期从 trackParams 取会全空。
+    item = data.get("itemDO", {}) or {}
+    seller = data.get("sellerDO", {}) or {}
     return {
-        "item_id": track.get("id", item_id),
-        "title": track.get("title", ""),
-        "price": track.get("soldPrice") or track.get("price", ""),
-        "seller_nick": track.get("seller_nick", ""),
-        "status": track.get("itemStatus", ""),
+        "item_id": str(item.get("itemId") or item_id),
+        "title": item.get("title", ""),
+        "price": item.get("soldPrice", item.get("originalPrice", "")),
+        "seller_nick": seller.get("nick", ""),
+        "status": item.get("itemStatusStr", ""),
         "raw": raw,
     }

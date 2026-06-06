@@ -21,8 +21,30 @@ class Format(StrEnum):
     CSV = "csv"
 
 
-def _as_rows(data: Any) -> tuple[list[str], list[dict[str, Any]]]:
+def _as_rows(
+    data: Any, columns: list[str] | None = None
+) -> tuple[list[str], list[dict[str, Any]]]:
     if isinstance(data, dict):
+        # 列表型命令把行数据包在 dict 里（如 {"items": [...], "total": N} /
+        # {"sessions": [...]}），外层是标量元信息。表格应渲染内层 list，否则
+        # 整个 dict 被当成一行、声明的列在顶层找不到 → 全空（json/yaml 不受影响）。
+        list_vals = [
+            v for v in data.values()
+            if isinstance(v, list) and v and isinstance(v[0], dict)
+        ]
+        if list_vals:
+            chosen = list_vals[0]
+            if columns:  # 多个 list 时，挑列名能对上的那个
+                for lv in list_vals:
+                    if any(c in lv[0] for c in columns):
+                        chosen = lv
+                        break
+            cols: list[str] = []
+            for item in chosen:
+                for k in item:
+                    if k not in cols:
+                        cols.append(k)
+            return cols, chosen
         return list(data.keys()), [data]
     if isinstance(data, list) and data and isinstance(data[0], dict):
         cols: list[str] = []
@@ -47,7 +69,7 @@ def render(data: Any, fmt: Format = Format.JSON, columns: list[str] | None = Non
         print(yaml.safe_dump(data, allow_unicode=True, sort_keys=False))
         return
 
-    cols, rows = _as_rows(data)
+    cols, rows = _as_rows(data, columns)
     if columns:
         cols = columns
     if not rows:
