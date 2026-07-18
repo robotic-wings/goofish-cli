@@ -20,6 +20,7 @@ from loguru import logger
 
 from goofish_cli.core.crypto import decrypt_cookies, encrypt_cookies
 from goofish_cli.core.errors import AuthRequiredError
+from goofish_cli.core.fsutil import restrict_to_owner
 from goofish_cli.core.sign import generate_device_id
 
 DEFAULT_COOKIE_PATH = Path.home() / ".goofish-cli" / "cookies.json"
@@ -124,7 +125,7 @@ def write_cookies_json(path: Path, cookies: dict[str, str]) -> None:
     """把 cookies dict 加密落盘。供 auth login / refresh / qr_login 复用。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(encrypt_cookies(cookies))
-    path.chmod(0o600)
+    restrict_to_owner(path)
 
 
 def _load_or_mint_device_id(unb: str) -> str:
@@ -144,7 +145,7 @@ def _load_or_mint_device_id(unb: str) -> str:
     device_id = generate_device_id(unb)
     DEVICE_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     DEVICE_CACHE_PATH.write_text(json.dumps({"unb": unb, "device_id": device_id}))
-    DEVICE_CACHE_PATH.chmod(0o600)
+    restrict_to_owner(DEVICE_CACHE_PATH)
     return device_id
 
 

@@ -6,11 +6,15 @@
 检测尽量"宁可漏报不误伤"，但因为是用户显式开启的防呆，容忍一定灵敏度；命中时
 错误信息会告诉用户怎么临时绕过（关代理，或 GOOFISH_BLOCK_ON_VPN=0 单次跳过）。
 
-检测信号（任一命中即判定）：
-1. 环境变量 http(s)_proxy / all_proxy 指向本机回环地址；
-2. macOS 系统代理（scutil --proxy）开启且指向 127.0.0.1；
-3. 运行中的 Clash 家族进程（clash / mihomo / clashx / clash verge …）；
-4. Clash 默认 external-controller 端口（9090）在本机监听。
+检测信号（任一命中即判定，三端各取所长）：
+1. 环境变量 http(s)_proxy / all_proxy 指向本机回环地址（全平台）；
+2. 系统代理指向 127.0.0.1：
+   - macOS：scutil --proxy
+   - Windows：注册表 WinINET（HKCU\\...\\Internet Settings, ProxyEnable/ProxyServer）
+   - Linux：无统一系统代理，靠 env / 进程 / 端口兜底
+3. 运行中的 Clash 家族进程（clash / mihomo / clashx / clash verge …）：
+   - Windows：tasklist；其余：ps
+4. Clash 默认 external-controller 端口（9090）在本机监听（全平台）。
 结果按进程生命周期缓存——一条命令执行期间代理状态不会变。
 """
 from __future__ import annotations
@@ -18,9 +22,13 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
+import sys
 from functools import lru_cache
 
 from loguru import logger
+
+IS_WINDOWS = os.name == "nt"
+IS_MACOS = sys.platform == "darwin"
 
 from goofish_cli.core.config import block_on_vpn
 from goofish_cli.core.errors import ProxyBlockedError
@@ -53,7 +61,8 @@ def _check_env_proxy() -> str | None:
 def _check_macos_system_proxy() -> str | None:
     try:
         out = subprocess.run(
-            ["scutil", "--proxy"], capture_output=True, text=True, timeout=2
+            ["scutil", "--proxy"], capture_output=True, text=True,
+            errors="ignore", timeout=2,
         ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
@@ -69,10 +78,43 @@ def _check_macos_system_proxy() -> str | None:
     return None
 
 
+def _check_windows_system_proxy() -> str | None:
+    # Clash for Windows / Clash Verge 走的是 WinINET 每用户代理，写在注册表 HKCU。
+    try:
+        import winreg  # noqa: WPS433 仅 Windows 有
+    except ImportError:
+        return None
+    key_path = r"Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            enabled, _ = winreg.QueryValueEx(key, "ProxyEnable")
+            if not enabled:
+                return None
+            server, _ = winreg.QueryValueEx(key, "ProxyServer")
+    except (OSError, FileNotFoundError):
+        return None
+    # ProxyServer 可能是 "127.0.0.1:7890" 或 "http=127.0.0.1:7890;https=..."
+    if server and any(h in server.lower() for h in _LOOPBACK_HOSTS):
+        return f"系统代理已开启 → {server}"
+    return None
+
+
+def _check_system_proxy() -> str | None:
+    if IS_MACOS:
+        return _check_macos_system_proxy()
+    if IS_WINDOWS:
+        return _check_windows_system_proxy()
+    return None  # Linux 无统一系统代理，交给 env / 进程 / 端口探针
+
+
 def _check_clash_process() -> str | None:
+    # Windows tasklist 输出走 OEM 代码页（如中文 cp936）；sign.py 又把 Popen 全局
+    # 强制成 utf-8，直接解会 UnicodeDecodeError。errors="ignore" 让 ASCII 的映像名
+    # （clash-verge.exe 等）照样能被匹配到，本地化表头字节丢掉无所谓。
+    cmd = ["tasklist"] if IS_WINDOWS else ["ps", "-Ao", "comm="]
     try:
         out = subprocess.run(
-            ["ps", "-Ao", "comm="], capture_output=True, text=True, timeout=2
+            cmd, capture_output=True, text=True, errors="ignore", timeout=3
         ).stdout.lower()
     except (OSError, subprocess.SubprocessError):
         return None
@@ -102,7 +144,7 @@ def detect_clash() -> tuple[bool, str]:
     """返回 (是否检测到 Clash 类代理, 命中原因)。检测本身出错时按"未检测到"处理（fail-open）。"""
     for probe in (
         _check_env_proxy,
-        _check_macos_system_proxy,
+        _check_system_proxy,
         _check_clash_process,
         _check_clash_ctrl_port,
     ):

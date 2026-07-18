@@ -75,3 +75,60 @@ def test_host_parsing_variants():
     assert proxy_guard._host_of("http://127.0.0.1:7890") == "127.0.0.1"
     assert proxy_guard._host_of("socks5://user:pass@localhost:7891") == "localhost"
     assert proxy_guard._host_of("proxy.example.com:8080") == "proxy.example.com"
+
+
+# --- 跨平台分发（不依赖真机 OS，靠 monkeypatch 平台标志）---
+
+def test_system_proxy_dispatch_macos(monkeypatch):
+    monkeypatch.setattr(proxy_guard, "IS_MACOS", True)
+    monkeypatch.setattr(proxy_guard, "IS_WINDOWS", False)
+    monkeypatch.setattr(proxy_guard, "_check_macos_system_proxy", lambda: "MAC_HIT")
+    monkeypatch.setattr(proxy_guard, "_check_windows_system_proxy", lambda: "WIN_HIT")
+    assert proxy_guard._check_system_proxy() == "MAC_HIT"
+
+
+def test_system_proxy_dispatch_windows(monkeypatch):
+    monkeypatch.setattr(proxy_guard, "IS_MACOS", False)
+    monkeypatch.setattr(proxy_guard, "IS_WINDOWS", True)
+    monkeypatch.setattr(proxy_guard, "_check_macos_system_proxy", lambda: "MAC_HIT")
+    monkeypatch.setattr(proxy_guard, "_check_windows_system_proxy", lambda: "WIN_HIT")
+    assert proxy_guard._check_system_proxy() == "WIN_HIT"
+
+
+def test_system_proxy_dispatch_linux(monkeypatch):
+    monkeypatch.setattr(proxy_guard, "IS_MACOS", False)
+    monkeypatch.setattr(proxy_guard, "IS_WINDOWS", False)
+    assert proxy_guard._check_system_proxy() is None
+
+
+def test_process_check_uses_tasklist_on_windows(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+
+        class R:
+            stdout = "clash-verge.exe\nchrome.exe\n"
+        return R()
+
+    monkeypatch.setattr(proxy_guard, "IS_WINDOWS", True)
+    monkeypatch.setattr(proxy_guard.subprocess, "run", fake_run)
+    reason = proxy_guard._check_clash_process()
+    assert captured["cmd"] == ["tasklist"]
+    assert "clash" in reason.lower()
+
+
+def test_process_check_uses_ps_on_unix(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+
+        class R:
+            stdout = "chrome\nfinder\n"
+        return R()
+
+    monkeypatch.setattr(proxy_guard, "IS_WINDOWS", False)
+    monkeypatch.setattr(proxy_guard.subprocess, "run", fake_run)
+    assert proxy_guard._check_clash_process() is None
+    assert captured["cmd"] == ["ps", "-Ao", "comm="]

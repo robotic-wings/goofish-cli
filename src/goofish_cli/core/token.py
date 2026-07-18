@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from goofish_cli.core.errors import AuthRequiredError
+from goofish_cli.core.fsutil import restrict_to_owner
 from goofish_cli.core.mtop import call
 from goofish_cli.core.session import Session
 
@@ -45,7 +46,7 @@ def _load_cache(unb: str) -> str | None:
 def _save_cache(unb: str, token: str) -> None:
     TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
     TOKEN_CACHE.write_text(json.dumps({"unb": unb, "token": token, "t": time.time()}))
-    TOKEN_CACHE.chmod(0o600)
+    restrict_to_owner(TOKEN_CACHE)
 
 
 def get_access_token(session: Session, *, force_refresh: bool = False) -> str:

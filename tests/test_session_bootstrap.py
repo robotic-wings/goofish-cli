@@ -6,12 +6,22 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
 from goofish_cli.core import session as session_mod
 from goofish_cli.core.crypto import decrypt_cookies
 from goofish_cli.core.errors import AuthRequiredError
+
+
+def assert_owner_only(path):
+    """校验敏感文件仅属主可访问。Unix mode 位在 Windows 上无意义（NTFS 用 ACL），
+    那里改由 fsutil.restrict_to_owner 走 icacls，测试只断言文件确实落盘。"""
+    if os.name == "nt":
+        assert path.exists()
+    else:
+        assert (path.stat().st_mode & 0o777) == 0o600
 
 
 @pytest.fixture
@@ -63,8 +73,8 @@ def test_load_bootstraps_when_missing(fake_cookies_path, monkeypatch):
     assert fake_cookies_path.exists()
     data = decrypt_cookies(fake_cookies_path.read_bytes())
     assert data["unb"] == "U2"
-    # 文件权限 0o600
-    assert (fake_cookies_path.stat().st_mode & 0o777) == 0o600
+    # 文件权限仅属主可访问
+    assert_owner_only(fake_cookies_path)
 
     # 第二次 load 应命中缓存，不再调 bootstrap
     s2 = session_mod.Session.load()
@@ -140,7 +150,7 @@ def test_write_cookies_json_format(tmp_path):
     # 解密后内容正确
     data = decrypt_cookies(raw)
     assert data == {"a": "1", "b": "2"}
-    assert (target.stat().st_mode & 0o777) == 0o600
+    assert_owner_only(target)
 
 
 def test_plaintext_migration_to_encrypted(fake_cookies_path, monkeypatch):
