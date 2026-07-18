@@ -95,3 +95,8 @@ asyncio_mode = "auto"
 # 显式钉住异步 fixture 的 event loop 作用域，消除 pytest-asyncio 1.x 在未设置时
 # 抛的 PytestDeprecationWarning（否则每次 run 都提示默认值将变化）。
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+  # wmi（browser_cookie3 在 Windows 上枚举浏览器的依赖）docstring 里有 \_ 等非法转义，
+  # Python 3.11 会抛 DeprecationWarning。第三方库、改不了源码，直接忽略。
+  "ignore:invalid escape sequence:DeprecationWarning",
+]
