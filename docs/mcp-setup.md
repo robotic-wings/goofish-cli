@@ -31,6 +31,38 @@
 
 `~/.cursor/mcp.json`：同上格式。
 
+## HTTP / HTTPS 模式（自己开服，客户端来连）
+
+默认走 stdio（客户端 spawn 本进程）。也可以在端口上开一个长驻服务，供远程 /
+多客户端 / 容器场景连接：
+
+```bash
+goofish-cli --http                          # streamable-http，默认 127.0.0.1:8444
+goofish-cli --http --host 0.0.0.0 --port 9000
+goofish-cli --http --transport sse          # 老的 SSE 传输
+```
+
+MCP 端点在 `/mcp`（SSE 传输时按 FastMCP 默认路径）。
+
+### HTTPS（mkcert 本地证书）
+
+找得到 TLS 证书就自动以 **HTTPS** 开服，否则退回明文 HTTP（带告警）。用
+[mkcert](https://github.com/FiloSottile/mkcert) 签一张本地受信任的证书：
+
+```bash
+mkcert -install    # 一次性：安装本地 CA
+mkcert -cert-file certs/localhost-cert.pem -key-file certs/localhost-key.pem localhost 127.0.0.1 ::1
+```
+
+默认从 `certs/localhost-cert.pem` / `certs/localhost-key.pem` 读取，也可显式指定：
+
+```bash
+goofish-cli --http --tls-cert /path/to/cert.pem --tls-key /path/to/key.pem
+# → https://127.0.0.1:8444/mcp
+```
+
+`certs/` 已在 `.gitignore` 中，私钥不会被提交。
+
 ## 可用工具
 
 启动后 Claude 获得以下 tool：

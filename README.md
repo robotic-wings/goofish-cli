@@ -140,6 +140,27 @@ $ goofish list-commands --format table
 </details>
 
 <details>
+<summary><b>防呆：开着 Clash/VPN 时拒绝执行</b></summary>
+
+开着代理访问闲鱼容易因出口 IP 异常导致登录失败甚至触发风控。开启 `block_on_vpn` 后，
+命令在真正发请求前会检测系统是否在走 Clash 类代理（环境变量代理 / macOS 系统代理 /
+Clash 家族进程 / 控制端口 9090），命中就直接拒绝（退出码 78），不把请求发出去。
+
+**默认关闭**，两种开启方式（环境变量优先级高于配置文件）：
+
+```bash
+# 单次 / CI：环境变量
+GOOFISH_BLOCK_ON_VPN=1 goofish item list
+
+# 持久化：~/.goofish-cli/config.json
+echo '{"block_on_vpn": true}' > ~/.goofish-cli/config.json
+```
+
+命中拦截后想临时跳过：`GOOFISH_BLOCK_ON_VPN=0 goofish ...`。
+
+</details>
+
+<details>
 <summary><b><code>goofish auth status</code></b> — 登录态健康检查</summary>
 
 ```json

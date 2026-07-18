@@ -98,6 +98,9 @@ async def goofish_page(
             await page.goto("https://www.goofish.com/search?q=foo")
             ...
     """
+    from goofish_cli.core.proxy_guard import preflight
+    preflight()  # 防呆：开着 Clash/VPN 时（block_on_vpn）拒绝启动浏览器访问闲鱼
+
     from playwright.async_api import async_playwright
 
     if headless is None:

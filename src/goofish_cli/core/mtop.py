@@ -79,6 +79,9 @@ def call(
     passport 弹窗的"快速进入"免密登录刷新 cookie 后重试一次。递归调用时置 False
     避免死循环。
     """
+    from goofish_cli.core.proxy_guard import preflight
+    preflight()  # 防呆：开着 Clash/VPN 时（block_on_vpn）直接拒绝，别把请求发出去
+
     url = f"{MTOP_HOST}/h5/{api}/{version}/"
     t_ms = str(int(time.time() * 1000))
     data_val = data if isinstance(data, str) else json.dumps(data, separators=(",", ":"))

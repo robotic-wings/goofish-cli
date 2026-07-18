@@ -28,6 +28,10 @@ cookies.json
 credentials.json
 auth.json
 
+# TLS certificates (mkcert)
+certs/
+*.pem
+
 # IDE
 .vscode/
 .idea/

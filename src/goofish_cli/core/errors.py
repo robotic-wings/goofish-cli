@@ -49,3 +49,12 @@ class EmptyResultError(GoofishError):
 class BlockedError(GoofishError):
     """请求被拦截（验证码页 / 安全验证 / 异常访问）。对标 opencli 的 blocked 分支。"""
     exit_code = 79
+
+
+class ProxyBlockedError(GoofishError):
+    """防呆：检测到系统在走 Clash 类代理 / VPN，且用户开启了 block_on_vpn。
+
+    开着代理访问闲鱼容易因出口 IP 异常导致登录失败甚至触发风控，故主动拒绝执行。
+    退出码复用 CONFIG(78)，语义上属于"当前配置/环境不允许继续"。
+    """
+    exit_code = 78
