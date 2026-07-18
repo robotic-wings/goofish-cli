@@ -2,11 +2,25 @@
 from __future__ import annotations
 
 import subprocess
-from functools import lru_cache, partial
+from functools import lru_cache
 from importlib.resources import files
 
-# 静默 Windows 编码问题（跨平台无害）
-subprocess.Popen = partial(subprocess.Popen, encoding="utf-8")
+# execjs（跑 node）和 browser_cookie3 的子进程输出在中文 Windows 上是 GBK/cp936，
+# Python 默认按 locale 解、execjs 又常按 utf-8 解，遇到 0xD2 这类字节会在读取线程里
+# 抛 UnicodeDecodeError（表现为 PytestUnhandledThreadExceptionWarning）。
+# 统一给 Popen 补上 encoding=utf-8 + errors=replace 的**默认值**：用 setdefault 而非
+# partial，避免和显式传了 encoding/errors 的调用方（如 proxy_guard 的 errors="ignore"）
+# 撞成 "multiple values for keyword argument"。
+_ORIG_POPEN = subprocess.Popen
+
+
+def _popen_utf8_lenient(*args, **kwargs):
+    kwargs.setdefault("encoding", "utf-8")
+    kwargs.setdefault("errors", "replace")
+    return _ORIG_POPEN(*args, **kwargs)
+
+
+subprocess.Popen = _popen_utf8_lenient
 
 import execjs  # noqa: E402  必须在 subprocess 补丁之后
 

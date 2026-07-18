@@ -92,3 +92,6 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+# 显式钉住异步 fixture 的 event loop 作用域，消除 pytest-asyncio 1.x 在未设置时
+# 抛的 PytestDeprecationWarning（否则每次 run 都提示默认值将变化）。
+asyncio_default_fixture_loop_scope = "function"
